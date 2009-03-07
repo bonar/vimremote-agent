@@ -1,0 +1,10 @@
+Changes
+MANIFEST
+Makefile.PL
+README
+lib/VimRemote/Agent.pm
+t/00-load.t
+t/01_locate.t
+t/02_vimbatch_do.t
+t/10_servers.t
+t/pod.t

@@ -1,0 +1,33 @@
+VimRemote-Agent
+
+INSTALLATION
+
+To install this module, run the following commands:
+
+	perl Makefile.PL
+	make
+	make test
+	make install
+
+You can also look for information at:
+
+    RT, CPAN's request tracker
+        http://rt.cpan.org/NoAuth/Bugs.html?Dist=VimRemote-Agent
+
+    AnnoCPAN, Annotated CPAN documentation
+        http://annocpan.org/dist/VimRemote-Agent
+
+    CPAN Ratings
+        http://cpanratings.perl.org/d/VimRemote-Agent
+
+    Search CPAN
+        http://search.cpan.org/dist/VimRemote-Agent/
+
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 2009 bonar
+
+This program is free software; you can redistribute it and/or modify it
+under the same terms as Perl itself.
+
