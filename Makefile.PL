@@ -16,6 +16,7 @@ WriteMakefile(
         'Test::More'  => 0,
         'File::Which' => 0,
         'IPC::Run'    => 0,
+        'Time::HiRes' => 0,
     },
     dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
     clean               => { FILES => 'VimRemote-Agent-*' },

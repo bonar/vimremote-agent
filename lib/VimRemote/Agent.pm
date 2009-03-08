@@ -9,10 +9,17 @@ our $VERSION = '0.01';
 use base 'Class::Accessor::Fast';
 use File::Which qw/which/;
 use IPC::Run qw/start pump finish/;
+use Time::HiRes qw/usleep/;
+
+use constant {
+    START_SERVER_CHECK_ERTRY => 30,
+    START_SERVER_CHECK_SLEEP => 1000, # micro secs
+
+    REMOTE_SEND_FMT => '<C-\><C-N>:%s<CR>',
+};
 
 __PACKAGE__->mk_accessors(qw/
     vimpath
-    target_server_name
     exit_on_destroy
 /);
 our $RETURN = '\r?\n'; # common output delim
@@ -34,11 +41,15 @@ sub has {
 }
 
 sub _start {
-    my ($command_array, @input) = @_;
+    my (%arg) = @_;
+
+    my $command_array = $arg{command};
+    my @input = ref($arg{input}) eq 'ARRAY' ? @{$arg{input}} : ();
 
     my (%st);
     my $harness = start($command_array
         , \$st{'in'}, \$st{'out'}, \$st{'err'});
+    return \%st if $arg{no_wait};
 
     foreach my $input (@input) {
         $st{in} .= $input . "\n";
@@ -50,11 +61,14 @@ sub _start {
 }
 
 sub vimbatch_do {
-    my ($self, $command) = @_;
+    my ($self, $input) = @_;
 
     # start vim with silent/batch mode (:help s-ex)
-    my $st = _start([$self->vimpath, qw{-e -s -V1}], $command);
-    my $response = (split /\Q$command\E/, $st->{'err'})[1];
+    my $st = _start(
+        command => [$self->vimpath, qw{-e -s -V1}],
+        input   => [$input],
+    );
+    my $response = (split /\Q$input\E/, $st->{'err'})[1];
     return (split /$RETURN/, $response)[1];
 }
 
@@ -81,10 +95,61 @@ sub new {
     return $self;
 }
 
-sub search_server {
+sub serverlist {
     my ($self) = @_;
-    my $st = _start([$self->vimpath, qw{--serverlist}]);
+    my $st = _start(
+        command => [$self->vimpath, qw{--serverlist}],
+    );
     return split /$RETURN/, $st->{'out'};
+}
+
+sub start_server {
+    my ($self, $name) = @_;
+    _start(
+        command => [$self->vimpath, '-g', '--servername', $name],
+        no_wait => 1,
+    );
+
+    # wait until the server found in serverlist
+    my $retry = START_SERVER_CHECK_ERTRY;
+    while ($retry--) {
+        return 1 if (grep /$name/, $self->serverlist());
+        usleep(START_SERVER_CHECK_SLEEP);
+    }
+    warn "starting server [$name] failed.";
+    return;
+}
+
+sub shutdown_server {
+    my ($self, $name) = @_;
+    return $self->remote_send($name, 'qa!');
+}
+
+sub remote_send {
+    my ($self, $server_name, $command) = @_;
+
+    my $st = _start(
+        command => [$self->vimpath, '--servername', $server_name
+            , '--remote-send', sprintf(REMOTE_SEND_FMT, $command)]);
+    if ($st->{'err'}) {
+        warn $st->{'err'};
+        return;
+    }
+    return 1;
+}
+
+sub remote_expr {
+    my ($self, $server_name, $expr) = @_;
+
+    my $st = _start(
+        command => [$self->vimpath, '--servername', $server_name
+            , '--remote-expr', $expr]);
+    if ($st->{'err'}) {
+        warn $st->{'err'};
+        return;
+    }
+    chomp $st->{'out'};
+    return $st->{'out'};
 }
 
 =head1 NAME
@@ -95,27 +160,31 @@ VimRemote::Agent - simple client for vim server operations.
 
     use VimRemote::Agent;
 
-    if (!VimRemote::Agent->vim_ready()) {
-        die "vim not found or not crrectly configured.";
+    my $agent = VimRemote::Agent->new();
+
+    # check compile option
+    if (!$agent->has('clientserver')) {
+        die "configure vim with +clientserver flag";
     }
 
-    # serch running vim server, and get names of them.
-    my $server = shift VimRemote::Agent->serverlist();
+    # get running server list
+    my @server_name = $agent->serverlist();
 
-    # create client object for the server.
-    my $client = VimRemote::Agent->new(
-        server => $server,
-    );
+    # start new server
+    my $server_name = 'NEWSVR';
+    if (!$agent->start_server($server_name)) {
+        die "starting server $server_name failed.";
+    }
 
-    # or you can start server with the name $server.
-    my $client = VimRemote::Agent->new(
-        server       => $server,
-        start_server => 1,
-    );
+    # calc on remote server
+    my $result = $agent->remote_expr($server_name, '1 + 1');
+    print $result; # 2
 
-    my $response = $client->open_file('foo.txt');
-    my $response = $client->send_command('echo "Happy Vimming!"');
-    my $response = $client->exec_file('my_vimscript.vim');
+    # send ex command to remote server
+    $agent->remote_send('e /tmp/hoge.txt');
+
+    # shutdown server
+    $agent->shutdown_server($server_name);
 
 
 =head1 DESCRIPTION
@@ -152,7 +221,58 @@ compiled with this configure flag to use it.
 
 Check compile options with :version command in vim normal mode.
 
-=head1 FUNCTIONS
+=head1 METHODS
+
+=head2 new(%opt)
+
+return VimRemote::Agent object. these are the options.
+
+=head3 vimpath
+
+path to vim. if not specified, search_vim() is called to search path.
+
+=head2 search_vim
+
+search and return  vim path with File::Which::which.
+
+=head2 has($option_name)
+
+check vim compile option. retrun 1 if current vim ($self->vimpath) is
+configured with +$option_name. 
+
+=head2 vimbatch_do($input)
+
+(beta function)
+
+execute vimscript($input) on the vim silent/batch mode with -V option
+and returns "only first line" of the output.
+
+=head2 serverlist
+
+returns running server name list (array of string). this is an alias 
+of system call "vim --serverlist".
+
+=head2 start_server($server_name)
+
+start vim server with $server_name. this is an alias of
+"vim --servername $servername". this function wait until
+$server_name is found in serverlist() array.
+
+=head2 shutdown_server
+
+shutdown vim server with $server_name. this function call remote_send()
+and execute quit command.
+
+=head2 remote_send($server_name, $command)
+
+send $command to running server($server_name). return 1 for success,
+0 for failed.
+
+=head2 remote_expr($server_name, $expr)
+
+send $expr to running server($server_name), and returns the result.
+
+  print $agent->remote_expr("SVR1", '5 * 3'); # 15
 
 =head1 AUTHOR
 
@@ -160,9 +280,9 @@ bonar, C<< <bonar at cpan.org> >>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-vimremote-client at rt.cpan.org>,
-or through the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=VimRemote-Agent>. 
-I will be notified, and then you'll automatically be notified of progress on your bug as I make changes.
+patches are wellcome.
+git repo:
+http://github.com/bonar/vimremote-agent/tree/master
 
 =head1 COPYRIGHT & LICENSE
 
