@@ -1,4 +1,40 @@
+
 VimRemote-Agent
+
+DESCRIPTION
+
+   VimRemote::Agent is a simple client for vim server operations.
+
+   This module is just a system call wrappers for vim server mode operations.
+   All the functions use IPC::Run to call vim commands and get its output,
+   so it is very slow.
+
+   XS version is comming up in 2050.
+
+ABOUT VIM SERVER
+
+   Vim can act as a command server. this command will start new server
+   named "BONAR".
+
+     vim --servername=BONAR
+
+   Now you can send file operation command or other vimscript to the
+   server "BONAR".
+
+     vim --servername=BONAR --remote "foo.txt"
+     vim --servername=BONAR --remote-send 'echo "Happy vimming"';
+
+   See vim help for details:
+     :help remote
+
+COMPILING VIM
+
+   Vim server mode (--remote) is not in default configure flag. your vim
+   has to be compiled with this configure flag to use it.
+
+     ./configure +clientserver
+
+   Check compile options with :version command in vim normal mode.
 
 INSTALLATION
 
@@ -8,21 +44,6 @@ To install this module, run the following commands:
 	make
 	make test
 	make install
-
-You can also look for information at:
-
-    RT, CPAN's request tracker
-        http://rt.cpan.org/NoAuth/Bugs.html?Dist=VimRemote-Agent
-
-    AnnoCPAN, Annotated CPAN documentation
-        http://annocpan.org/dist/VimRemote-Agent
-
-    CPAN Ratings
-        http://cpanratings.perl.org/d/VimRemote-Agent
-
-    Search CPAN
-        http://search.cpan.org/dist/VimRemote-Agent/
-
 
 COPYRIGHT AND LICENCE
 
