@@ -8,18 +8,20 @@ our $VERSION = '0.01';
 
 use base 'Class::Accessor::Fast';
 use File::Which qw/which/;
-use IPC::Run qw/start pump finish/;
+use IPC::Run qw/start pump finish run timeout/;
 use Time::HiRes qw/usleep/;
 
 use constant {
     START_SERVER_CHECK_ERTRY => 30,
     START_SERVER_CHECK_SLEEP => 1000, # micro secs
+    RUN_TIMEOUT => 5, # secs
 
     REMOTE_SEND_FMT => '<C-\><C-N>:%s<CR>',
 };
 
 __PACKAGE__->mk_accessors(qw/
     vimpath
+    run_timeout
     exit_on_destroy
 /);
 our $RETURN = '\r?\n'; # common output delim
@@ -125,29 +127,59 @@ sub shutdown_server {
     return $self->remote_send($name, 'qa!');
 }
 
-sub remote_send {
-    my ($self, $server_name, $command) = @_;
+sub _remote_cmd {
+    my ($self, $server_name, $cmd) = @_;
 
     my $st = _start(
-        command => [$self->vimpath, '--servername', $server_name
-            , '--remote-send', sprintf(REMOTE_SEND_FMT, $command)]);
+        command => $cmd);
     if ($st->{'err'}) {
         warn $st->{'err'};
         return;
     }
+    return $st;
+}
+
+sub remote {
+    my ($self, $server_name, $file) = @_;
+
+    $self->_remote_cmd($server_name
+        , [$self->vimpath, '--servername', $server_name
+            , '--remote', $file]);
+    return 1;
+}
+
+sub remote_wait {
+    my ($self, $server_name, $file) = @_;
+    
+    my (%st);
+    my $timeout = $self->run_timeout 
+        ? $self->run_timeout 
+        : RUN_TIMEOUT
+        ;
+    run([$self->vimpath, '--servername', $server_name
+        , '--remote-wait', $file]
+        , \$st{in}, \$st{out}, \$st{err}
+        , timeout($timeout));
+    return 1;
+}
+
+sub remote_send {
+    my ($self, $server_name, $command) = @_;
+
+    $self->_remote_cmd($server_name
+        , [$self->vimpath, '--servername', $server_name
+            , '--remote-send', sprintf(REMOTE_SEND_FMT, $command)]);
     return 1;
 }
 
 sub remote_expr {
     my ($self, $server_name, $expr) = @_;
 
-    my $st = _start(
-        command => [$self->vimpath, '--servername', $server_name
+    my $st = $self->_remote_cmd($server_name
+        , [$self->vimpath, '--servername', $server_name
             , '--remote-expr', $expr]);
-    if ($st->{'err'}) {
-        warn $st->{'err'};
-        return;
-    }
+    return if !defined $st;
+
     chomp $st->{'out'};
     return $st->{'out'};
 }
@@ -262,6 +294,16 @@ $server_name is found in serverlist() array.
 
 shutdown vim server with $server_name. this function call remote_send()
 and execute quit command.
+
+=head2 remote($server_name, $filepath)
+
+open $filepath on remote server.
+
+=head2 remote_wait($server_name, $filepath)
+
+open $filepath on remote server. but this method use "run" instead of 
+"start". that means this method waits until vim server returns some
+response (or timeout).
 
 =head2 remote_send($server_name, $command)
 

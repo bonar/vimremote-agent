@@ -1,5 +1,5 @@
 
-use Test::More tests => 25;
+use Test::More tests => 31;
 
 BEGIN {
     use_ok('VimRemote::Agent');
@@ -49,6 +49,36 @@ isa_ok($agent, 'VimRemote::Agent');
     is($agent->remote_expr('EXPR', '2 * 3'), 6, 'expr 2 * 3');
     is($agent->remote_expr('EXPR', '339 / 3'), 113, 'expr 339 / 3');
     is($agent->shutdown_server('EXPR'), 1, 'shutdown server');
+}
+
+{ # remote
+    is($agent->start_server('REMOTE'), 1, 'starting server');
+
+    # create test file, and print pid on it.
+    my $tmp_path = "VimRemote-Agent-$$.txt";
+    unless (open $tmp, '> ', $tmp_path) {
+        die "cannot create temp file for test";
+    }
+    print $tmp $$;
+    close($tmp);
+
+    # open tmp file on remote server and get first line
+    # by calling --remote.
+    $agent->remote_send('REMOTE', "e $tmp_path");
+    my $firstline = $agent->remote_expr('REMOTE', 'getline(1)');
+    is($firstline, $$, 'e open and remote read combination');
+
+    is($agent->shutdown_server('REMOTE'), 1, 'shutdown server');
+
+    # remote-wait
+    is($agent->start_server('REMOTEWAIT'), 1
+        , 'starting server (for remote wait)');
+
+    eval { $agent->remote_wait('REMOTEWAIT', "$tmp_path"); };
+    ok($@, "timeout ok");
+
+    is($agent->shutdown_server('REMOTEWAIT'), 1, 'shutdown server');
+    unlink($tmp_path);
 }
 
 { # remote send
