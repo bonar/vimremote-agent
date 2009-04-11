@@ -172,6 +172,15 @@ sub remote_send {
     return 1;
 }
 
+sub remote_send_raw {
+    my ($self, $server_name, $command) = @_;
+
+    $self->_remote_cmd($server_name
+        , [$self->vimpath, '--servername', $server_name
+            , '--remote-send', $command]);
+    return 1;
+}
+
 sub remote_expr {
     my ($self, $server_name, $expr) = @_;
 
