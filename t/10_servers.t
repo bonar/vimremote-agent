@@ -3,12 +3,9 @@ use Test::More tests => 31;
 
 BEGIN {
     use_ok('VimRemote::Agent');
-    plan skip_all => 'vim not found' if !VimRemote::Agent::search_vim();
 
     my $mok = bless {}, 'VimRemote::Agent';
     $mok->vimpath(VimRemote::Agent->search_vim());
-    plan skip_all => 'no clientserver option.' 
-        . 'reconfigure with +clientserver flag' if !$mok->has('clientserver');
 }
 
 plan skip_all => 'this terminal needs output tty' if !-t;
